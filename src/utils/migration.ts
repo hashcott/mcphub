@@ -157,6 +157,7 @@ export async function migrateToDatabase(): Promise<boolean> {
         auth: settings.systemConfig.auth || {},
         enableSessionRebuild: settings.systemConfig.enableSessionRebuild,
         discovery: settings.systemConfig.discovery || {},
+        guardrails: settings.systemConfig.guardrails || {},
       };
       await systemConfigRepo.update(systemConfig);
       logger.log('  - System configuration updated');

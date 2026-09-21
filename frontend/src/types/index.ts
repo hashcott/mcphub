@@ -906,3 +906,36 @@ export interface OpenApiToolStats {
   estimatedTokens: number;
   declaredSecurity?: OpenAPIDeclaredSecurity;
 }
+
+// MCP Guardrails (global safety controls for tool calls). Mirrors the backend
+// SystemConfig.guardrails shape used by the dashboard settings UI.
+export type GuardrailAction = 'block' | 'redact';
+
+export interface GuardrailPattern {
+  name?: string;
+  pattern: string;
+  flags?: string;
+  action?: GuardrailAction;
+  replacement?: string;
+}
+
+export interface GuardrailPolicyConfig {
+  allow?: string[];
+  deny?: string[];
+}
+
+export interface GuardrailFilterConfig {
+  enabled?: boolean;
+  pii?: string[];
+  keywords?: string[];
+  patterns?: GuardrailPattern[];
+  action?: GuardrailAction;
+  redactionText?: string;
+}
+
+export interface GuardrailsConfig {
+  enabled?: boolean;
+  policy?: GuardrailPolicyConfig;
+  input?: GuardrailFilterConfig;
+  output?: GuardrailFilterConfig;
+}

@@ -228,6 +228,46 @@ export interface ToolResultCompressionConfig {
   strategy?: ToolResultCompressionStrategy;
 }
 
+// What to do when a guardrail rule matches.
+// - 'block': reject the whole tool call with an error result
+// - 'redact': replace the matched substring with `redactionText`/`replacement`
+export type GuardrailAction = 'block' | 'redact';
+
+// A custom regex rule applied to tool-call input arguments or output content.
+export interface GuardrailPattern {
+  name?: string; // Human-readable label used in logs (defaults to the pattern source)
+  pattern: string; // Regular expression source
+  flags?: string; // Regex flags (default: 'gi')
+  action?: GuardrailAction; // Overrides the filter-level action for this rule
+  replacement?: string; // Replacement text when action is 'redact' (default: filter redactionText)
+}
+
+// Allow/deny policy for which tools may be called. Matched against the effective
+// tool name (e.g. 'server-tool' for direct calls, or the requested tool name for
+// smart-routing `call_tool`). '*' acts as a wildcard.
+export interface GuardrailPolicyConfig {
+  allow?: string[]; // When non-empty, only tools matching an entry are allowed
+  deny?: string[]; // Tools matching an entry are always blocked (takes precedence over allow)
+}
+
+// Content-scanning filter for tool-call input arguments or output content.
+export interface GuardrailFilterConfig {
+  enabled?: boolean; // Defaults to true when the filter object is present
+  pii?: string[]; // Built-in PII detectors to enable: 'email' | 'phone' | 'credit-card' | 'ssn' | 'ip'
+  patterns?: GuardrailPattern[]; // Custom regex rules
+  keywords?: string[]; // Case-insensitive substring blocklist
+  action?: GuardrailAction; // Default action for pii/keyword matches (default: 'redact')
+  redactionText?: string; // Replacement text for redacted matches (default: '[REDACTED]')
+}
+
+// Global guardrails applied to every MCP tool call routed through MCPHub.
+export interface GuardrailsConfig {
+  enabled?: boolean; // Master switch; guardrails are inert unless true
+  policy?: GuardrailPolicyConfig; // Tool allow/deny policy
+  input?: GuardrailFilterConfig; // Filter applied to tool-call arguments before dispatch
+  output?: GuardrailFilterConfig; // Filter applied to tool-call results before returning
+}
+
 export interface SystemConfig {
   routing?: {
     enableGlobalRoute?: boolean; // Controls whether the /sse endpoint without group is enabled
@@ -272,6 +312,7 @@ export interface SystemConfig {
     // Defaults to true.
     storeToolPayload?: boolean;
   };
+  guardrails?: GuardrailsConfig; // Global safety controls for MCP tool calls (policy + input/output filtering)
 }
 
 export interface UserConfig {

@@ -100,6 +100,11 @@ import { checkPackageUpdate } from '../utils/packageUpdate.js';
 const servers: { [sessionId: string]: Server } = {};
 
 import { setupClientKeepAlive } from './keepAliveService.js';
+import {
+  evaluateToolPolicy,
+  isGuardrailsEnabled,
+  scanValue,
+} from './guardrailService.js';
 import { logger } from '../utils/logger.js';
 
 type FetchLike = (url: string | URL, init?: RequestInit) => Promise<Response>;
@@ -4739,8 +4744,132 @@ const withPrincipalServers =
     }
   };
 
+// Meta tools handled by MCPHub itself (smart routing). They carry no upstream
+// tool arguments to filter and are exempt from tool allow/deny policy.
+const GUARDRAIL_META_TOOLS = new Set(['search_tools', 'describe_tool']);
+
+const guardrailBlockResult = (message: string) => ({
+  content: [{ type: 'text', text: `Error: ${message}` }],
+  isError: true,
+});
+
+// Resolve the effective tool name and argument payload for a CallToolRequest,
+// transparently handling the smart-routing `call_tool` envelope where the real
+// tool name and arguments are nested under request.params.arguments.
+const resolveGuardrailToolCall = (request: any) => {
+  const name = request?.params?.name;
+  if (name === 'call_tool') {
+    const inner = request?.params?.arguments || {};
+    return {
+      toolName: typeof inner.toolName === 'string' ? inner.toolName : undefined,
+      args: inner.arguments,
+      isMeta: false,
+      setArgs: (value: unknown) => {
+        request.params.arguments = { ...inner, arguments: value };
+      },
+    };
+  }
+  return {
+    toolName: typeof name === 'string' ? name : undefined,
+    args: request?.params?.arguments,
+    isMeta: typeof name === 'string' && GUARDRAIL_META_TOOLS.has(name),
+    setArgs: (value: unknown) => {
+      request.params.arguments = value;
+    },
+  };
+};
+
+/**
+ * Global guardrails wrapper for tool calls. Applies (1) an allow/deny tool
+ * policy, (2) an input filter over arguments, and (3) an output filter over the
+ * result — all configured under `systemConfig.guardrails`. It is a single
+ * chokepoint covering both direct and smart-routing (`call_tool`) invocations.
+ */
+const withGuardrails =
+  (handler: (request: any, extra: any) => Promise<any>) => async (request: any, extra: any) => {
+    let guardrails;
+    try {
+      const systemConfig = await getSystemConfigDao().get();
+      guardrails = systemConfig?.guardrails;
+    } catch (error) {
+      logger.warn('Failed to load guardrails config; proceeding without guardrails', {
+        ...summarizeErrorForLogging(error),
+      });
+      guardrails = undefined;
+    }
+
+    if (!isGuardrailsEnabled(guardrails)) {
+      return handler(request, extra);
+    }
+
+    const call = resolveGuardrailToolCall(request);
+    if (call.isMeta || !call.toolName) {
+      return handler(request, extra);
+    }
+
+    // 1. Tool allow/deny policy
+    const policy = evaluateToolPolicy(call.toolName, guardrails.policy);
+    if (!policy.allowed) {
+      logger.warn('Guardrail blocked tool call by policy', {
+        tool: call.toolName,
+        rule: policy.rule,
+      });
+      return guardrailBlockResult(
+        `Tool call blocked by guardrail policy${policy.rule ? ` (${policy.rule})` : ''}`,
+      );
+    }
+
+    // 2. Input filter (block or redact arguments)
+    if (guardrails.input) {
+      const scan = scanValue(call.args, guardrails.input);
+      if (scan.blocked) {
+        logger.warn('Guardrail blocked tool call input', {
+          tool: call.toolName,
+          rule: scan.blockedRule,
+        });
+        return guardrailBlockResult(
+          `Tool call input blocked by guardrail (${scan.blockedRule})`,
+        );
+      }
+      if (scan.value !== call.args) {
+        call.setArgs(scan.value);
+        logger.log('Guardrail redacted tool call input', {
+          tool: call.toolName,
+          matches: scan.matches.map((m) => m.rule),
+        });
+      }
+    }
+
+    const result = await handler(request, extra);
+
+    // 3. Output filter (block or redact the result before returning)
+    if (guardrails.output) {
+      const scan = scanValue(result, guardrails.output);
+      if (scan.blocked) {
+        logger.warn('Guardrail blocked tool call output', {
+          tool: call.toolName,
+          rule: scan.blockedRule,
+        });
+        return guardrailBlockResult(
+          `Tool call output blocked by guardrail (${scan.blockedRule})`,
+        );
+      }
+      if (scan.value !== result) {
+        logger.log('Guardrail redacted tool call output', {
+          tool: call.toolName,
+          matches: scan.matches.map((m) => m.rule),
+        });
+        return scan.value;
+      }
+    }
+
+    return result;
+  };
+
 export const handleListToolsRequest = withPrincipalServers(handleListToolsRequestImpl, 'list');
-export const handleCallToolRequest = withPrincipalServers(handleCallToolRequestImpl, 'tool');
+export const handleCallToolRequest = withGuardrails(
+  withPrincipalServers(handleCallToolRequestImpl, 'tool'),
+);
 export const handleGetPromptRequest = withPrincipalServers(handleGetPromptRequestImpl, 'prompt');
 export const handleListPromptsRequest = withPrincipalServers(handleListPromptsRequestImpl, 'list');
 export const handleListResourcesRequest = withPrincipalServers(

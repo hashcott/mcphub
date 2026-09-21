@@ -57,6 +57,37 @@
         "requiresAuthentication": false,
         "clientTtl": 2592000
       }
+    },
+    "guardrails": {
+      "enabled": false,
+      "policy": {
+        "allow": [],
+        "deny": []
+      },
+      "input": {
+        "enabled": true,
+        "pii": [
+          "email",
+          "credit-card",
+          "ssn"
+        ],
+        "keywords": [],
+        "patterns": [],
+        "action": "redact",
+        "redactionText": "[REDACTED]"
+      },
+      "output": {
+        "enabled": true,
+        "pii": [
+          "email",
+          "credit-card",
+          "ssn"
+        ],
+        "keywords": [],
+        "patterns": [],
+        "action": "redact",
+        "redactionText": "[REDACTED]"
+      }
     }
   },
   "bearerKeys": [],

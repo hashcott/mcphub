@@ -47,6 +47,7 @@ import {
   getUserDao,
 } from '../dao/DaoFactory.js';
 import { migrateLegacySmartRoutingConfig } from '../dao/SystemConfigDao.js';
+import { normalizeGuardrailsConfig } from '../services/guardrailService.js';
 import { UserContextService } from '../services/userContextService.js';
 import { authorizationService } from '../services/authorizationService.js';
 import {
@@ -1652,6 +1653,7 @@ export const updateSystemConfig = async (req: Request, res: Response): Promise<v
       oauthServer,
       auth,
       activityLog,
+      guardrails,
     } = req.body;
     const { smartRouting } = migrateLegacySmartRoutingConfig(requestSmartRouting);
 
@@ -1713,6 +1715,8 @@ export const updateSystemConfig = async (req: Request, res: Response): Promise<v
 
     const hasActivityLogUpdate = activityLog && typeof activityLog.storeToolPayload === 'boolean';
 
+    const hasGuardrailsUpdate = guardrails && typeof guardrails === 'object';
+
     const hasOAuthServerUpdate =
       oauthServer &&
       (typeof oauthServer.enabled === 'boolean' ||
@@ -1756,7 +1760,8 @@ export const updateSystemConfig = async (req: Request, res: Response): Promise<v
       !hasSessionRebuildUpdate &&
       !hasOAuthServerUpdate &&
       !hasBetterAuthUpdate &&
-      !hasActivityLogUpdate
+      !hasActivityLogUpdate &&
+      !hasGuardrailsUpdate
     ) {
       res.status(400).json({
         success: false,
@@ -2327,6 +2332,10 @@ export const updateSystemConfig = async (req: Request, res: Response): Promise<v
         ...systemConfig.activityLog,
         storeToolPayload: activityLog.storeToolPayload,
       };
+    }
+
+    if (hasGuardrailsUpdate) {
+      systemConfig.guardrails = normalizeGuardrailsConfig(guardrails);
     }
 
     // Save using DAO (supports both file and database modes)
