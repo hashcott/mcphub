@@ -47,6 +47,12 @@ services:
       # Tài khoản admin cố định (user: admin)
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
 
+      # Secret bắt buộc cho production (sinh bằng: openssl rand -base64 32)
+      # JWT_SECRET: ký JWT phiên dashboard; đặt cố định để không mất session khi restart.
+      # BETTER_AUTH_SECRET: bắt buộc cho Better Auth (Google login), nếu thiếu sẽ báo lỗi liên tục.
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+
       # --- Google OAuth (Better Auth) ---
       # URL public: dùng để dựng redirect URI và làm trusted origin.
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL is required}
