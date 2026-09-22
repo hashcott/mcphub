@@ -43,7 +43,8 @@
               "configuration/environment-variables",
               "configuration/docker-setup",
               "configuration/nginx",
-              "configuration/database-configuration"
+              "configuration/database-configuration",
+              "configuration/guardrails"
             ]
           },
           {
@@ -90,7 +91,8 @@
               "zh/configuration/environment-variables",
               "zh/configuration/docker-setup",
               "zh/configuration/nginx",
-              "zh/configuration/database-configuration"
+              "zh/configuration/database-configuration",
+              "zh/configuration/guardrails"
             ]
           }
         ]

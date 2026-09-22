@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import ChangePasswordForm from '@/components/ChangePasswordForm';
+import GuardrailsSettings from '@/components/GuardrailsSettings';
 import { Switch } from '@/components/ui/ToggleGroup';
 import { MultiSelect } from '@/components/ui/MultiSelect';
 import { useSettingsData } from '@/hooks/useSettingsData';
@@ -2872,6 +2873,11 @@ const SettingsPage: React.FC = () => {
             </div>
           )}
         </div>
+      </PermissionChecker>
+
+      {/* Guardrails Settings */}
+      <PermissionChecker permissions={PERMISSIONS.SETTINGS_SYSTEM_CONFIG}>
+        <GuardrailsSettings />
       </PermissionChecker>
 
       {/* OAuth Server Configuration Settings */}

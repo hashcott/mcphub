@@ -1,0 +1,77 @@
+---
+title: '安全护栏 (Guardrails)'
+description: 'MCP 工具调用的全局安全控制：允许/拒绝策略与输入/输出过滤'
+---
+
+# 安全护栏 (Guardrails)
+
+安全护栏为经过 MCPHub 路由的每一次 MCP 工具调用提供全局安全控制。它作用于统一的拦截点，同时覆盖直接工具调用和智能路由 (`call_tool`) 调用，因此只需配置一次即可在所有路径生效。
+
+包含三项相互独立的控制：
+
+1. **工具策略 (policy)** —— 允许/拒绝哪些工具可被调用。
+2. **输入过滤 (input)** —— 在参数到达上游服务器之前扫描工具调用参数，对敏感内容执行 **拦截 (block)** 或 **脱敏 (redact)**。
+3. **输出过滤 (output)** —— 在结果返回客户端之前扫描工具调用结果，对敏感内容执行 **拦截** 或 **脱敏**。
+
+安全护栏在 `mcp_settings.json` 的 `systemConfig.guardrails` 下配置，**默认关闭**。只有当 `enabled` 为 `true` 时才会强制执行。
+
+你可以在仪表盘的 **设置 → 安全护栏** 中管理全部配置（需要系统配置权限），也可以按下方参考直接编辑配置文件。
+
+## 配置
+
+```json
+{
+  "systemConfig": {
+    "guardrails": {
+      "enabled": true,
+      "policy": {
+        "allow": [],
+        "deny": ["shell-*", "fs-delete"]
+      },
+      "input": {
+        "enabled": true,
+        "pii": ["email", "credit-card", "ssn"],
+        "keywords": ["internal-only"],
+        "patterns": [
+          { "name": "api-key", "pattern": "sk-[a-zA-Z0-9]+", "action": "redact" }
+        ],
+        "action": "redact",
+        "redactionText": "[REDACTED]"
+      },
+      "output": {
+        "enabled": true,
+        "pii": ["email", "credit-card", "ssn"],
+        "action": "redact"
+      }
+    }
+  }
+}
+```
+
+### 字段说明
+
+| 字段 | 说明 |
+| --- | --- |
+| `enabled` | 总开关。为 `true` 时护栏才生效。 |
+| `policy.deny` | 匹配到的工具始终被拒绝，优先级高于 `allow`。 |
+| `policy.allow` | 非空时，仅允许匹配到的工具被调用。 |
+| `input` / `output` | 分别针对工具参数与结果的内容过滤。 |
+| `input.enabled` | 存在过滤对象时默认为 `true`，设为 `false` 可关闭该侧。 |
+| `pii` | 启用的内置检测器：`email`、`phone`、`credit-card`、`ssn`、`ip`。 |
+| `keywords` | 大小写不敏感的子串黑名单。 |
+| `patterns` | 自定义正则规则：`{ name?, pattern, flags?, action?, replacement? }`。非法正则会被跳过。 |
+| `action` | `pii`/`keyword` 匹配的默认动作：`redact`（默认）或 `block`。 |
+| `redactionText` | 脱敏替换文本（默认 `[REDACTED]`）。 |
+
+### 策略匹配
+
+策略模式按 **有效工具名** 匹配 —— 直接调用为限定名（如 `server-tool`），智能路由 `call_tool` 为请求的工具名。使用 `*` 作为通配符，例如 `shell-*` 或 `github-*`。
+
+智能路由的元工具（`search_tools`、`describe_tool`）不受策略与过滤约束。
+
+### 动作
+
+- **`redact`** —— 匹配到的子串会被 `redactionText`（或规则级的 `replacement`）替换，工具调用会以脱敏后的值继续执行。
+- **`block`** —— 整个工具调用被拒绝并向客户端返回错误结果；输入侧不会联系上游服务器，输出侧则不返回其结果。
+
+`deny` 策略命中与被拦截的过滤都会返回标准的 MCP 错误结果（`isError: true`），且每次强制执行都会写入 MCPHub 日志。

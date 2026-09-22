@@ -7,7 +7,7 @@ import React, {
   ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ApiResponse, BearerKey } from '@/types';
+import { ApiResponse, BearerKey, GuardrailsConfig } from '@/types';
 import { useToast } from '@/contexts/ToastContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiGet, apiPut, apiPost, apiDelete } from '@/utils/fetchInterceptor';
@@ -122,6 +122,7 @@ interface SystemSettings {
     activityLog?: {
       storeToolPayload?: boolean;
     };
+    guardrails?: GuardrailsConfig;
   };
   bearerKeys?: BearerKey[];
 }
@@ -145,6 +146,7 @@ interface SettingsContextValue {
   nameSeparator: string;
   enableSessionRebuild: boolean;
   storeToolPayload: boolean;
+  guardrailsConfig: GuardrailsConfig;
   bearerKeys: BearerKey[];
   loading: boolean;
   error: string | null;
@@ -183,6 +185,7 @@ interface SettingsContextValue {
   updateNameSeparator: (value: string) => Promise<boolean | undefined>;
   updateSessionRebuild: (value: boolean) => Promise<boolean | undefined>;
   updateStoreToolPayload: (value: boolean) => Promise<boolean | undefined>;
+  updateGuardrailsConfig: (config: GuardrailsConfig) => Promise<boolean | undefined>;
   exportMCPSettings: (serverName?: string) => Promise<any>;
   // Bearer key management
   refreshBearerKeys: () => Promise<void>;
@@ -394,6 +397,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
   const [nameSeparator, setNameSeparator] = useState<string>('-');
   const [enableSessionRebuild, setEnableSessionRebuild] = useState<boolean>(false);
   const [storeToolPayload, setStoreToolPayload] = useState<boolean>(true);
+  const [guardrailsConfig, setGuardrailsConfig] = useState<GuardrailsConfig>({ enabled: false });
   const [bearerKeys, setBearerKeys] = useState<BearerKey[]>([]);
 
   const [loading, setLoading] = useState(false);
@@ -536,6 +540,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       }
       if (data.success && data.data?.systemConfig?.activityLog?.storeToolPayload !== undefined) {
         setStoreToolPayload(data.data.systemConfig.activityLog.storeToolPayload);
+      }
+      if (data.success && data.data?.systemConfig?.guardrails) {
+        setGuardrailsConfig(data.data.systemConfig.guardrails);
       }
 
       if (data.success && Array.isArray(data.data?.bearerKeys)) {
@@ -1049,6 +1056,36 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     }
   };
 
+  const updateGuardrailsConfig = async (config: GuardrailsConfig) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const data = await apiPut('/system-config', {
+        guardrails: config,
+      });
+
+      if (data.success) {
+        setGuardrailsConfig(data.data?.systemConfig?.guardrails ?? config);
+        showToast(t('settings.systemConfigUpdated'));
+        return true;
+      } else {
+        setError(data.error || 'Failed to update guardrails configuration');
+        showToast(data.error || t('settings.guardrailsUpdateFailed'));
+        return false;
+      }
+    } catch (error) {
+      console.error('Failed to update guardrails configuration', { error });
+      setError(
+        error instanceof Error ? error.message : 'Failed to update guardrails configuration',
+      );
+      showToast(t('settings.guardrailsUpdateFailed'));
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const exportMCPSettings = async (serverName?: string) => {
     setLoading(true);
     setError(null);
@@ -1170,6 +1207,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     nameSeparator,
     enableSessionRebuild,
     storeToolPayload,
+    guardrailsConfig,
     bearerKeys,
     loading,
     error,
@@ -1191,6 +1229,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     updateNameSeparator,
     updateSessionRebuild,
     updateStoreToolPayload,
+    updateGuardrailsConfig,
     exportMCPSettings,
     refreshBearerKeys,
     createBearerKey,

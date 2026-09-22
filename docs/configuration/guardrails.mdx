@@ -1,0 +1,77 @@
+---
+title: 'Guardrails'
+description: 'Global safety controls for MCP tool calls: allow/deny policy and input/output filtering'
+---
+
+# Guardrails
+
+Guardrails apply global safety controls to every MCP tool call routed through MCPHub. They run at a single chokepoint that covers both direct tool calls and smart-routing (`call_tool`) invocations, so a rule you configure once applies everywhere.
+
+There are three independent controls:
+
+1. **Tool policy** — allow/deny which tools may be called.
+2. **Input filter** — scan tool-call arguments before they reach the upstream server, and **block** or **redact** sensitive content.
+3. **Output filter** — scan tool-call results before they are returned to the client, and **block** or **redact** sensitive content.
+
+Guardrails are configured under `systemConfig.guardrails` in `mcp_settings.json` and are **disabled by default**. Nothing is enforced unless `enabled` is `true`.
+
+You can manage all of these settings from the dashboard under **Settings → Guardrails** (requires system-config permission), or edit the configuration file directly using the reference below.
+
+## Configuration
+
+```json
+{
+  "systemConfig": {
+    "guardrails": {
+      "enabled": true,
+      "policy": {
+        "allow": [],
+        "deny": ["shell-*", "fs-delete"]
+      },
+      "input": {
+        "enabled": true,
+        "pii": ["email", "credit-card", "ssn"],
+        "keywords": ["internal-only"],
+        "patterns": [
+          { "name": "api-key", "pattern": "sk-[a-zA-Z0-9]+", "action": "redact" }
+        ],
+        "action": "redact",
+        "redactionText": "[REDACTED]"
+      },
+      "output": {
+        "enabled": true,
+        "pii": ["email", "credit-card", "ssn"],
+        "action": "redact"
+      }
+    }
+  }
+}
+```
+
+### Fields
+
+| Field | Description |
+| --- | --- |
+| `enabled` | Master switch. Guardrails are inert unless `true`. |
+| `policy.deny` | Tools matching an entry are always blocked. Takes precedence over `allow`. |
+| `policy.allow` | When non-empty, only tools matching an entry are allowed. |
+| `input` / `output` | Content filters for tool arguments and results respectively. |
+| `input.enabled` | Defaults to `true` when the filter object is present. Set `false` to disable that side. |
+| `pii` | Built-in detectors to enable: `email`, `phone`, `credit-card`, `ssn`, `ip`. |
+| `keywords` | Case-insensitive substring blocklist. |
+| `patterns` | Custom regex rules: `{ name?, pattern, flags?, action?, replacement? }`. Invalid regexes are skipped. |
+| `action` | Default action for `pii`/`keyword` matches: `redact` (default) or `block`. |
+| `redactionText` | Replacement text for redacted matches (default: `[REDACTED]`). |
+
+### Policy matching
+
+Policy patterns match against the **effective tool name** — the qualified name for direct calls (e.g. `server-tool`), or the requested tool name for smart-routing `call_tool`. Use `*` as a wildcard, for example `shell-*` or `github-*`.
+
+The smart-routing meta tools (`search_tools`, `describe_tool`) are exempt from policy and filtering.
+
+### Actions
+
+- **`redact`** — the matched substring is replaced with `redactionText` (or a per-pattern `replacement`). The tool call still proceeds with the sanitized value.
+- **`block`** — the entire tool call is rejected and an error result is returned to the client; the upstream server is never contacted (for input) or its result is withheld (for output).
+
+`deny` policy matches and blocked filters return a standard MCP error result (`isError: true`), and each enforcement is written to the MCPHub logs.
