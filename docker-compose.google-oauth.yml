@@ -1,0 +1,75 @@
+# ============================================================================
+# MCPHub + PostgreSQL + Google OAuth (Better Auth)
+#
+# Cách chạy:
+#   1. cp .env.example .env   rồi điền: BETTER_AUTH_URL, GOOGLE_CLIENT_ID,
+#      GOOGLE_CLIENT_SECRET, ADMIN_PASSWORD, DB_PASSWORD.
+#   2. Trên Google Cloud Console, thêm Authorized redirect URI:
+#        <BETTER_AUTH_URL>/api/auth/better/callback/google
+#   3. docker compose -f docker-compose.google-oauth.yml up -d
+#
+# Ghi chú: Better Auth chỉ đọc cấu hình lúc khởi động -> đổi biến thì
+# phải restart lại service mcphub.
+# ============================================================================
+
+services:
+  # PostgreSQL (pgvector) - lưu cấu hình, activity log, và bảng Better Auth
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: mcphub-postgres
+    environment:
+      POSTGRES_DB: mcphub
+      POSTGRES_USER: mcphub
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-mcphub_password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcphub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mcphub-network
+
+  # MCPHub
+  mcphub:
+    image: samanhappy/mcphub:latest
+    container_name: mcphub
+    environment:
+      # Kết nối DB -> tự bật database mode (cần cho Activity Log + Better Auth)
+      DB_URL: "postgresql://mcphub:${DB_PASSWORD:-mcphub_password}@postgres:5432/mcphub"
+
+      PORT: 3000
+      NODE_ENV: production
+
+      # Tài khoản admin cố định (user: admin)
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+
+      # --- Google OAuth (Better Auth) ---
+      # URL public: dùng để dựng redirect URI và làm trusted origin.
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL is required}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET is required}
+
+      # Các tuỳ chọn (bỏ comment ở .env nếu cần override):
+      BETTER_AUTH_ENABLED: ${BETTER_AUTH_ENABLED:-true}
+      BETTER_AUTH_GOOGLE_ENABLED: ${BETTER_AUTH_GOOGLE_ENABLED:-true}
+      BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:-}
+    ports:
+      - "${MCPHUB_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - mcphub-network
+
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  mcphub-network:
+    driver: bridge
