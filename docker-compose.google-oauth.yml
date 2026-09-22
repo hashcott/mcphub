@@ -33,9 +33,16 @@ services:
     networks:
       - mcphub-network
 
-  # MCPHub
+  # MCPHub - build từ source trong thư mục hiện tại (để chạy code tuỳ chỉnh,
+  # vd tính năng guardrail). Chạy kèm cờ --build khi có thay đổi code:
+  #   docker compose -f docker-compose.google-oauth.yml up -d --build
   mcphub:
-    image: samanhappy/mcphub:latest
+    build:
+      context: .
+      # Bật Playwright/Docker-in-Docker nếu cần (ảnh rất nặng). Guardrail không cần.
+      # args:
+      #   INSTALL_EXT: "true"
+    image: mcphub-custom:latest
     container_name: mcphub
     environment:
       # Kết nối DB -> tự bật database mode (cần cho Activity Log + Better Auth)
